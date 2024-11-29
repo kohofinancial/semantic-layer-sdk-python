@@ -5,7 +5,7 @@ from typing import List
 
 import pytest
 from mashumaro.codecs.basic import decode
-from typing_extensions import override
+from enum import Enum
 
 from dbtsl.api.graphql.util import normalize_query
 from dbtsl.api.shared.query_params import (
@@ -17,7 +17,7 @@ from dbtsl.api.shared.query_params import (
     validate_order_by,
     validate_query_parameters,
 )
-from dbtsl.models.base import BaseModel, DeprecatedMixin, GraphQLFragmentMixin
+from dbtsl.models.base import BaseModel, GraphQLFragmentMixin, deprecated
 from dbtsl.models.base import snake_case_to_camel_case as stc
 
 
@@ -63,11 +63,13 @@ def test_graphql_fragment_mixin() -> None:
     assert len(a_fragments) == 1
     a_fragment = a_fragments[0]
 
-    a_expect = normalize_query("""
+    a_expect = normalize_query(
+        """
     fragment fragmentA on A {
         fooBar
     }
-    """)
+    """
+    )
     assert a_fragment.name == "fragmentA"
     assert a_fragment.body == a_expect
 
@@ -75,7 +77,8 @@ def test_graphql_fragment_mixin() -> None:
     assert len(b_fragments) == 2
     b_fragment = b_fragments[0]
 
-    b_expect = normalize_query("""
+    b_expect = normalize_query(
+        """
     fragment fragmentB on B {
         helloWorld
         baz
@@ -86,28 +89,72 @@ def test_graphql_fragment_mixin() -> None:
             ...fragmentA
         }
     }
-    """)
+    """
+    )
     assert b_fragment.name == "fragmentB"
     assert b_fragment.body == b_expect
     assert b_fragments[1] == a_fragment
 
 
-def test_DeprecatedMixin() -> None:
-    msg = "i am deprecated :("
+def test_deprecated_with_default_message():
+    """Test that @deprecated without arguments uses the class name in the warning."""
+    with pytest.warns(DeprecationWarning) as warning_info:
 
-    class MyDeprecatedClass(DeprecatedMixin):
-        @override
-        @classmethod
-        def _deprecation_message(cls) -> str:
-            return msg
+        @deprecated
+        class TestEnum(str, Enum):
+            VALUE = "value"
 
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
+        # Access the enum to trigger the warning
+        TestEnum.VALUE
 
-        _ = MyDeprecatedClass()
-        assert len(w) == 1
-        assert issubclass(w[0].category, DeprecationWarning)
-        assert msg == str(w[0].message)
+    assert len(warning_info) == 1
+    assert str(warning_info[0].message) == "TestEnum is deprecated"
+
+
+def test_deprecated_with_empty_parentheses():
+    """Test that @deprecated() behaves the same as @deprecated."""
+    with pytest.warns(DeprecationWarning) as warning_info:
+
+        @deprecated()
+        class TestEnum(str, Enum):
+            VALUE = "value"
+
+        TestEnum.VALUE
+
+    assert len(warning_info) == 1
+    assert str(warning_info[0].message) == "TestEnum is deprecated"
+
+
+def test_deprecated_with_custom_message():
+    """Test that @deprecated with custom message uses the provided message."""
+    custom_message = "This is a custom deprecation message"
+    with pytest.warns(DeprecationWarning) as warning_info:
+
+        @deprecated(custom_message)
+        class TestEnum(str, Enum):
+            VALUE = "value"
+
+        TestEnum.VALUE
+
+    assert len(warning_info) == 1
+    assert str(warning_info[0].message) == custom_message
+
+
+def test_deprecated_warning_only_once():
+    """Test that warning is only raised once per class."""
+    with pytest.warns(DeprecationWarning) as warning_info:
+
+        @deprecated
+        class TestEnum(str, Enum):
+            VALUE1 = "value1"
+            VALUE2 = "value2"
+
+        # Access multiple values
+        TestEnum.VALUE1
+        TestEnum.VALUE2
+
+    # Should only warn once
+    assert len(warning_info) == 1
 
 
 def test_attr_deprecation_warning() -> None:
