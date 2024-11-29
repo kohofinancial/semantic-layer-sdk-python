@@ -77,17 +77,22 @@ class BaseModel(DataClassDictMixin):
         return v
 
 
-class DeprecatedMixin:
-    """Add this to any deprecated model."""
+# Deprecation decorator
+def deprecated(message=None):
+    def decorator(cls):
+        default_message = f"{cls.__name__} is deprecated"
+        warning_message = message if message is not None else default_message
+        warnings.warn(warning_message, DeprecationWarning)
+        return cls
 
-    @classmethod
-    def _deprecation_message(cls) -> str:
-        """The deprecation message that will get displayed."""
-        return f"{cls.__name__} is deprecated"
-
-    def __init__(self, *args, **kwargs) -> None:  # noqa: D107
-        warnings.warn(self._deprecation_message(), DeprecationWarning)
-        super(DeprecatedMixin, self).__init__()
+    # Handle both @deprecated and @deprecated() cases
+    if isinstance(message, type):
+        # If used as @deprecated (without parentheses)
+        cls = message
+        message = None
+        return decorator(cls)
+    # If used as @deprecated() or @deprecated("message")
+    return decorator
 
 
 @dataclass(frozen=True, eq=True)
@@ -151,10 +156,12 @@ class GraphQLFragmentMixin:
 
         query_str = "         \n".join(query_elements)
 
-        fragment_body = normalize_query(f"""
+        fragment_body = normalize_query(
+            f"""
         fragment {fragment_name} on {gql_model_name} {{
             {query_str}
         }}
-        """)
+        """
+        )
         fragment = GraphQLFragment(name=fragment_name, body=fragment_body)
         return [fragment] + list(dependencies)
